@@ -11,6 +11,7 @@ const allUsers = asyncHandler(async (req, res) => {
         $or: [
           { name: { $regex: req.query.search, $options: "i" } },
           { email: { $regex: req.query.search, $options: "i" } },
+          { username: { $regex: req.query.search, $options: "i" } },
         ],
       }
     : {};
@@ -23,14 +24,14 @@ const allUsers = asyncHandler(async (req, res) => {
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
-  const { name, email, password, pic } = req.body;
+  const { name, email, password, pic, username } = req.body;
 
-  if (!name || !email || !password) {
+  if (!name || !email || !password || !username) {
     res.status(400);
-    throw new Error("Please Enter all the Feilds");
+    throw new Error("Please Enter all the Fields");
   }
 
-  const userExists = await User.findOne({ email });
+  const userExists = await User.findOne({ $or: [{ email }, { username }] });
 
   if (userExists) {
     res.status(400);
@@ -39,6 +40,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
   const user = await User.create({
     name,
+    username,
     email,
     password,
     pic,
@@ -48,6 +50,7 @@ const registerUser = asyncHandler(async (req, res) => {
     res.status(201).json({
       _id: user._id,
       name: user.name,
+      username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
       pic: user.pic,
@@ -71,6 +74,7 @@ const authUser = asyncHandler(async (req, res) => {
     res.json({
       _id: user._id,
       name: user.name,
+      username: user.username,
       email: user.email,
       isAdmin: user.isAdmin,
       pic: user.pic,

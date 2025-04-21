@@ -3,12 +3,12 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = mongoose.Schema(
   {
-    name: { type: "String", required: true },
-    email: { type: "String", unique: true, required: true },
-    password: { type: "String", required: true },
+    name: { type: String, required: true },
+    username: { type: String, unique: true, required: true },
+    email: { type: String, unique: true, required: true },
+    password: { type: String, required: true },
     pic: {
-      type: "String",
-      required: true,
+      type: String,
       default:
         "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
     },
@@ -18,7 +18,7 @@ const userSchema = mongoose.Schema(
       default: false,
     },
   },
-  { timestaps: true }
+  { timestamps: true }
 );
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
@@ -26,7 +26,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 };
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified) {
+  if (!this.isModified("password")) {
     next();
   }
 
@@ -34,6 +34,6 @@ userSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-const User = mongoose.model("User", userSchema);
+const User = mongoose.model("User", userSchema, "users");
 
 module.exports = User;

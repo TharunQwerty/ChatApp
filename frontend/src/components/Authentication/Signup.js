@@ -1,19 +1,27 @@
-import { Button } from "@chakra-ui/button";
-import { FormControl, FormLabel } from "@chakra-ui/form-control";
-import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
-import { VStack } from "@chakra-ui/layout";
-import { useToast } from "@chakra-ui/toast";
-import axios from "axios";
+import {
+  Button,
+  FormControl,
+  FormLabel,
+  Input,
+  InputGroup,
+  InputRightElement,
+  VStack,
+  useToast,
+} from "@chakra-ui/react";
 import { useState } from "react";
-import { useHistory } from "react-router";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { ChatState } from "../../Context/ChatProvider";
 
 const Signup = () => {
   const [show, setShow] = useState(false);
   const handleClick = () => setShow(!show);
   const toast = useToast();
-  const history = useHistory();
+  const navigate = useNavigate();
+  const { setUser } = ChatState();
 
   const [name, setName] = useState();
+  const [username, setUsername] = useState();
   const [email, setEmail] = useState();
   const [confirmpassword, setConfirmpassword] = useState();
   const [password, setPassword] = useState();
@@ -22,9 +30,9 @@ const Signup = () => {
 
   const submitHandler = async () => {
     setPicLoading(true);
-    if (!name || !email || !password || !confirmpassword) {
+    if (!name || !username || !email || !password || !confirmpassword) {
       toast({
-        title: "Please Fill all the Feilds",
+        title: "Please Fill all the Fields",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -43,7 +51,7 @@ const Signup = () => {
       });
       return;
     }
-    console.log(name, email, password, pic);
+    console.log(name, username, email, password, pic);
     try {
       const config = {
         headers: {
@@ -54,6 +62,7 @@ const Signup = () => {
         "/api/user",
         {
           name,
+          username,
           email,
           password,
           pic,
@@ -69,11 +78,12 @@ const Signup = () => {
         position: "bottom",
       });
       localStorage.setItem("userInfo", JSON.stringify(data));
+      setUser(data);
       setPicLoading(false);
-      history.push("/chats");
+      navigate("/chats");
     } catch (error) {
       toast({
-        title: "Error Occured!",
+        title: "Error Occurred!",
         description: error.response.data.message,
         status: "error",
         duration: 5000,
@@ -138,6 +148,13 @@ const Signup = () => {
           onChange={(e) => setName(e.target.value)}
         />
       </FormControl>
+      <FormControl id="username" isRequired>
+        <FormLabel>Username</FormLabel>
+        <Input
+          placeholder="Enter Your Username"
+          onChange={(e) => setUsername(e.target.value)}
+        />
+      </FormControl>
       <FormControl id="email" isRequired>
         <FormLabel>Email Address</FormLabel>
         <Input
@@ -161,7 +178,7 @@ const Signup = () => {
           </InputRightElement>
         </InputGroup>
       </FormControl>
-      <FormControl id="password" isRequired>
+      <FormControl id="confirm-password" isRequired>
         <FormLabel>Confirm Password</FormLabel>
         <InputGroup size="md">
           <Input

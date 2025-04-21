@@ -1,23 +1,44 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { useHistory } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const ChatContext = createContext();
 
 const ChatProvider = ({ children }) => {
   const [selectedChat, setSelectedChat] = useState();
-  const [user, setUser] = useState();
+  const [user, setUser] = useState(() => {
+    // Initialize user state from localStorage on component mount
+    const userInfo = JSON.parse(localStorage.getItem("userInfo"));
+    return userInfo;
+  });
   const [notification, setNotification] = useState([]);
   const [chats, setChats] = useState();
 
-  const history = useHistory();
+  const navigate = useNavigate();
 
+  // Set up axios interceptor for handling auth errors
   useEffect(() => {
-    const userInfo = JSON.parse(localStorage.getItem("userInfo"));
-    setUser(userInfo);
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem("userInfo");
+          setUser(null);
+          navigate("/");
+        }
+        return Promise.reject(error);
+      }
+    );
 
-    if (!userInfo) history.push("/");
+    // Redirect to login if no user
+    if (!user) navigate("/");
+
+    // Cleanup interceptor on unmount
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history]);
+  }, [navigate]);
 
   return (
     <ChatContext.Provider

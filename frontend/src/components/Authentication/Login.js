@@ -1,11 +1,16 @@
-import { Button } from "@chakra-ui/button";
-import { FormControl, FormLabel } from "@chakra-ui/form-control";
-import { Input, InputGroup, InputRightElement } from "@chakra-ui/input";
-import { VStack } from "@chakra-ui/layout";
+import {
+  Button,
+  FormControl,
+  FormLabel,
+  Input,
+  InputGroup,
+  InputRightElement,
+  VStack,
+  useToast,
+} from "@chakra-ui/react";
 import { useState } from "react";
 import axios from "axios";
-import { useToast } from "@chakra-ui/react";
-import { useHistory } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ChatState } from "../../Context/ChatProvider";
 
 const Login = () => {
@@ -16,14 +21,14 @@ const Login = () => {
   const [password, setPassword] = useState();
   const [loading, setLoading] = useState(false);
 
-  const history = useHistory();
+  const navigate = useNavigate();
   const { setUser } = ChatState();
 
   const submitHandler = async () => {
     setLoading(true);
     if (!email || !password) {
       toast({
-        title: "Please Fill all the Feilds",
+        title: "Please Fill all the Fields",
         status: "warning",
         duration: 5000,
         isClosable: true,
@@ -40,11 +45,13 @@ const Login = () => {
         },
       };
 
-      const { data } = await axios.post(
+      const response = await axios.post(
         "/api/user/login",
         { email, password },
         config
       );
+
+      const data = response.data;
 
       toast({
         title: "Login Successful",
@@ -56,11 +63,12 @@ const Login = () => {
       setUser(data);
       localStorage.setItem("userInfo", JSON.stringify(data));
       setLoading(false);
-      history.push("/chats");
+      navigate("/chats");
     } catch (error) {
+      const errorMessage = error.response?.data?.message || "Failed to login";
       toast({
-        title: "Error Occured!",
-        description: error.response.data.message,
+        title: "Error Occurred!",
+        description: errorMessage,
         status: "error",
         duration: 5000,
         isClosable: true,
