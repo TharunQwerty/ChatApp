@@ -20,15 +20,72 @@ const allUsers = asyncHandler(async (req, res) => {
   res.send(users);
 });
 
+//@description     Validate user input for registration
+const validateUserInput = (name, username, email, password) => {
+  const errors = {};
+  
+  // Validate name
+  if (!name || name.trim() === "") {
+    errors.name = "Name cannot be empty";
+  } else if (name.length < 5) {
+    errors.name = "Name must be at least 5 characters long";
+  } else if (/[^a-zA-Z0-9_\s]/.test(name)) {
+    errors.name = "Name can only contain letters, numbers, and underscore";
+  } else if (name.endsWith("_")) {
+    errors.name = "Name cannot end with an underscore";
+  }
+  
+  // Validate username
+  if (!username || username.trim() === "") {
+    errors.username = "Username cannot be empty";
+  } else if (username.length < 5) {
+    errors.username = "Username must be at least 5 characters long";
+  } else if (/[^a-zA-Z0-9_]/.test(username)) {
+    errors.username = "Username can only contain letters, numbers, and underscore";
+  } else if (username.endsWith("_")) {
+    errors.username = "Username cannot end with an underscore";
+  }
+  
+  // Validate email
+  if (!email || email.trim() === "") {
+    errors.email = "Email cannot be empty";
+  } else if (!email.includes("@") || !email.includes(".")) {
+    errors.email = "Email must contain @ and .";
+  }
+  
+  // Validate password
+  if (!password) {
+    errors.password = "Password is required";
+  } else if (password.length < 8) {
+    errors.password = "Password must be at least 8 characters long";
+  } else if (!/[A-Z]/.test(password)) {
+    errors.password = "Password must include at least one uppercase letter";
+  } else if (!/[a-z]/.test(password)) {
+    errors.password = "Password must include at least one lowercase letter";
+  } else if (!/[0-9]/.test(password)) {
+    errors.password = "Password must include at least one digit";
+  } else if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    errors.password = "Password must include at least one special character";
+  }
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
+
 //@description     Register new user
 //@route           POST /api/user/
 //@access          Public
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, password, pic, username } = req.body;
 
-  if (!name || !email || !password || !username) {
+  // Validate all input fields
+  const validation = validateUserInput(name, username, email, password);
+  
+  if (!validation.isValid) {
     res.status(400);
-    throw new Error("Please Enter all the Fields");
+    throw new Error(Object.values(validation.errors)[0]); // Return the first error
   }
 
   const userExists = await User.findOne({ $or: [{ email }, { username }] });

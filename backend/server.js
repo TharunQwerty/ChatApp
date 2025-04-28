@@ -6,6 +6,9 @@ const chatRoutes = require("./routes/chatRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const path = require("path");
+const Message = require("./models/messageModel");
+const Chat = require("./models/chatModel");
+const User = require("./models/userModel");
 
 dotenv.config();
 connectDB();
@@ -53,7 +56,9 @@ const server = app.listen(
 const io = require("socket.io")(server, {
   pingTimeout: 60000,
   cors: {
-    origin: "http://localhost:3000",
+    origin: process.env.NODE_ENV === "production" 
+      ? "*" // In production, accept all origins 
+      : "http://localhost:3000",
     // credentials: true,
   },
 });
@@ -89,3 +94,67 @@ io.on("connection", (socket) => {
     socket.leave(userData._id);
   });
 });
+
+// Scheduled message processor
+const checkScheduledMessages = async () => {
+  try {
+    const now = new Date();
+    console.log(`[${now.toISOString()}] Checking for scheduled messages...`);
+    
+    // Find messages scheduled for delivery that are due
+    const scheduledMessages = await Message.find({
+      scheduledFor: { $lte: now, $ne: null }
+    })
+      .populate("sender", "name pic")
+      .populate("chat")
+      .populate({
+        path: "chat.users",
+        select: "name pic email",
+      });
+
+    console.log(`Found ${scheduledMessages.length} scheduled messages to deliver`);
+    
+    for (const message of scheduledMessages) {
+      console.log(`Processing scheduled message: ${message._id}, scheduled for: ${message.scheduledFor}`);
+      
+      try {
+        // Update the message to mark it as delivered
+        const updatedMessage = await Message.findByIdAndUpdate(
+          message._id,
+          { scheduledFor: null },
+          { new: true }
+        );
+        
+        console.log(`Updated message scheduled status: ${updatedMessage._id}`);
+
+        // Update the latest message in the chat
+        await Chat.findByIdAndUpdate(
+          message.chat._id, 
+          { latestMessage: message }
+        );
+
+        console.log(`Emitting message to chat users: ${message.chat._id}`);
+        
+        // Emit the message to all users in the chat
+        if (message.chat.users) {
+          message.chat.users.forEach((user) => {
+            if (user._id == message.sender._id) return;
+            console.log(`Emitting message to user: ${user._id}`);
+            io.in(user._id).emit("message recieved", message);
+          });
+        }
+      } catch (msgError) {
+        console.error(`Error processing individual message ${message._id}:`, msgError);
+      }
+    }
+
+  } catch (error) {
+    console.error("Error processing scheduled messages:", error);
+  }
+};
+
+// Check for scheduled messages more frequently (every 10 seconds)
+setInterval(checkScheduledMessages, 10000);
+
+// Run once at startup to process any pending scheduled messages
+setTimeout(checkScheduledMessages, 5000);
