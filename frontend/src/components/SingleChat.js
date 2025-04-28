@@ -35,7 +35,11 @@ import ProfileModal from "./miscellaneous/ProfileModal";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-const ENDPOINT = "http://localhost:5000";
+// Use relative URL in production, localhost in development
+const ENDPOINT = window.location.hostname === "localhost" 
+  ? "http://localhost:5000" 
+  : window.location.origin;
+
 var socket, selectedChatCompare;
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
@@ -176,17 +180,43 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
-    socket = io(ENDPOINT);
+    socket = io(ENDPOINT, {
+      withCredentials: true,
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+    
     socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
+    
+    socket.on("connected", () => {
+      console.log("Socket connected successfully");
+      setSocketConnected(true);
+    });
+    
+    socket.on("connect_error", (error) => {
+      console.log("Socket connection error:", error);
+      toast({
+        title: "Connection Error",
+        description: "Trying to reconnect to chat service...",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+        position: "bottom-left",
+      });
+    });
+    
     socket.on("typing", () => setIsTyping(true));
     socket.on("stop typing", () => setIsTyping(false));
 
     // Clean up function
     return () => {
       socket.off("connected");
+      socket.off("connect_error");
       socket.off("typing");
       socket.off("stop typing");
+      socket.disconnect();
     };
     // eslint-disable-next-line
   }, []);
@@ -226,7 +256,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     return () => {
       socket.off("message recieved", messageHandler);
     };
-  }, [notification, fetchAgain, selectedChat]);
+  }, [notification, fetchAgain, selectedChat, setFetchAgain, setNotification]);
 
   const typingHandler = (e) => {
     setNewMessage(e.target.value);

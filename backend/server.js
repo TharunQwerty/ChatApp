@@ -56,15 +56,18 @@ const server = app.listen(
 const io = require("socket.io")(server, {
   pingTimeout: 60000,
   cors: {
-    origin: process.env.NODE_ENV === "production" 
-      ? "*" // In production, accept all origins 
-      : "http://localhost:3000",
-    // credentials: true,
+    origin: "*", // Allow connections from any origin
+    methods: ["GET", "POST"],
+    credentials: true
   },
+  transports: ['websocket', 'polling'],
+  maxHttpBufferSize: 1e8,  // 100 MB
 });
 
+console.log("Socket.io server initialized");
+
 io.on("connection", (socket) => {
-  console.log("Connected to socket.io");
+  console.log("Connected to socket.io, Socket ID:", socket.id);
   socket.on("setup", (userData) => {
     socket.join(userData._id);
     socket.emit("connected");
