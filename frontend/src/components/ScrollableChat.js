@@ -1,6 +1,6 @@
 import { Avatar, Box, Button, Menu, MenuButton, MenuItem, MenuList, Tooltip, Spinner, Text, useToast } from "@chakra-ui/react";
 import axios from "axios";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import ScrollableFeed from "react-scrollable-feed";
 import {
   isLastMessage,
@@ -16,6 +16,17 @@ const ScrollableChat = ({ messages }) => {
   const [loadingTranslations, setLoadingTranslations] = useState({});
   const [translationError, setTranslationError] = useState(null);
   const toast = useToast();
+  const scrollRef = useRef();
+  const messagesEndRef = useRef(null);
+
+  // Auto scroll to bottom whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   // Simple client-side translations (as fallback)
   const clientSideTranslations = {
@@ -236,7 +247,7 @@ const ScrollableChat = ({ messages }) => {
   };
 
   return (
-    <ScrollableFeed>
+    <ScrollableFeed ref={scrollRef}>
       {/* Display translation error if any */}
       {translationError && (
         <Box 
@@ -256,7 +267,7 @@ const ScrollableChat = ({ messages }) => {
       
       {messages &&
         messages.map((m, i) => (
-          <div style={{ display: "flex" }} key={m._id}>
+          <div key={m._id} style={{ display: "flex" }}>
             {(isSameSender(messages, m, i, user._id) ||
               isLastMessage(messages, i, user._id)) && (
               <Tooltip label={m.sender.name} placement="bottom-start" hasArrow>
@@ -270,94 +281,59 @@ const ScrollableChat = ({ messages }) => {
                 />
               </Tooltip>
             )}
-            <Box
+            <span
               style={{
                 backgroundColor: `${
-                  m.isScheduledMessage ? "#FEB2B2" : // Light red for scheduled messages
                   m.sender._id === user._id ? "#BEE3F8" : "#B9F5D0"
                 }`,
-                marginLeft: isSameSenderMargin(messages, m, i, user._id),
-                marginTop: isSameUser(messages, m, i, user._id) ? 3 : 10,
+                color: m.isScheduledMessage ? "gray.600" : "black",
                 borderRadius: "20px",
                 padding: "5px 15px",
                 maxWidth: "75%",
-                position: "relative",
+                marginLeft: isSameSenderMargin(messages, m, i, user._id),
+                marginTop: isSameUser(messages, m, i, user._id) ? 3 : 10,
+                fontStyle: m.isScheduledMessage ? "italic" : "normal",
               }}
             >
-              {/* If it's a scheduled message indicator, display it differently */}
-              {m.isScheduledMessage ? (
-                <Text fontStyle="italic" fontSize="sm">{m.content}</Text>
-              ) : Object.keys(loadingTranslations).some(key => key.startsWith(`${m._id}-`)) ? (
-                <Box textAlign="center" p={2}>
-                  <Spinner size="sm" />
-                  <Text fontSize="xs" mt={1}>Translating...</Text>
-                </Box>
-              ) : translatedMessages[m._id] ? (
-                <>
-                  <span>{translatedMessages[m._id]}</span>
-                  <Button
-                    size="xs"
-                    colorScheme="blue"
-                    onClick={() => resetTranslation(m._id)}
-                    mt={1}
-                    width="100%"
-                  >
-                    Show Original
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span>{m.content}</span>
-                  <Menu closeOnSelect={false}>
-                    <MenuButton
-                      as={Button}
-                      size="xs"
-                      colorScheme="blue"
-                      mt={1}
-                      width="100%"
+              {translatedMessages[m._id] || m.content}
+              
+              {/* Translation menu */}
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  size="xs"
+                  colorScheme="blue"
+                  variant="ghost"
+                  ml={2}
+                >
+                  Translate
+                </MenuButton>
+                <MenuList>
+                  {translatedMessages[m._id] && (
+                    <MenuItem onClick={() => resetTranslation(m._id)}>
+                      Original
+                    </MenuItem>
+                  )}
+                  {languages.map((lang) => (
+                    <MenuItem
+                      key={lang.code}
+                      onClick={() => translateMessage(m._id, m.content, lang.name)}
+                      isDisabled={isLanguageLoading(m._id, lang.name)}
                     >
-                      Translate
-                    </MenuButton>
-                    <MenuList>
-                      {/* Show hint for simple phrases that work offline */}
-                      {(m.content.toLowerCase() === "hello" || 
-                        m.content.toLowerCase() === "thank you" || 
-                        m.content.toLowerCase() === "how are you") && (
-                        <Text fontSize="xs" p={2} color="green.600">
-                          ✓ Works offline
-                        </Text>
-                      )}
-                      
-                      {languages.map((lang) => (
-                        <MenuItem
-                          key={lang.code}
-                          onClick={() =>
-                            translateMessage(m._id, m.content, lang.name)
-                          }
-                          isDisabled={isLanguageLoading(m._id, lang.name)}
-                        >
-                          {isLanguageLoading(m._id, lang.name) ? (
-                            <Box display="flex" alignItems="center">
-                              <Spinner size="xs" mr={2} />
-                              {lang.name}
-                            </Box>
-                          ) : (
-                            <Box display="flex" alignItems="center">
-                              {lang.name}
-                              {clientSideFallbackTranslation(m.content, lang.name) && (
-                                <Text fontSize="xs" ml={2} color="green.500">✓</Text>
-                              )}
-                            </Box>
-                          )}
-                        </MenuItem>
-                      ))}
-                    </MenuList>
-                  </Menu>
-                </>
-              )}
-            </Box>
+                      {isLanguageLoading(m._id, lang.name) ? (
+                        <Spinner size="xs" mr={2} />
+                      ) : null}
+                      {lang.name}
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </Menu>
+            </span>
           </div>
         ))}
+
+      {/* Invisible element at the bottom for scrolling */}
+      <div ref={messagesEndRef} style={{ height: "1px" }} />
     </ScrollableFeed>
   );
 };

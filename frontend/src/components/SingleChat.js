@@ -40,7 +40,9 @@ const ENDPOINT = window.location.hostname === "localhost"
   ? "http://localhost:5000" 
   : window.location.origin;
 
-var socket, selectedChatCompare;
+// Create a single socket instance to be reused
+let socket;
+let selectedChatCompare;
 
 const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   const [messages, setMessages] = useState([]);
@@ -106,11 +108,12 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             Authorization: `Bearer ${user.token}`,
           },
         };
+        const messageText = newMessage;
         setNewMessage("");
 
         // If there's a scheduled time, send it with the message
         const messageData = {
-          content: newMessage,
+          content: messageText,
           chatId: selectedChat,
         };
 
@@ -128,7 +131,7 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
             },
             content: `[Scheduled for ${new Date(
               scheduledDateTime
-            ).toLocaleString()}] ${newMessage}`,
+            ).toLocaleString()}] ${messageText}`,
             chat: selectedChat,
             isScheduledMessage: true,
             createdAt: new Date(),
@@ -142,15 +145,18 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
         }
 
         const { data } = await axios.post("/api/message", messageData, config);
+        console.log("Message sent successfully:", data);
 
         // Only emit socket event if message is not scheduled
         if (!messageData.scheduledFor) {
           console.log("Emitting new regular message");
           socket.emit("new message", data);
+          
+          // Update messages locally right away for immediate feedback
           setMessages((prevMessages) => {
             // Filter out any temporary scheduled message indicators that might be duplicates
             const filteredMessages = prevMessages.filter(
-              (m) => !m.isScheduledMessage
+              (m) => !m.isScheduledMessage && m._id !== data._id
             );
             return [...filteredMessages, data];
           });
@@ -167,9 +173,10 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
           });
         }
       } catch (error) {
+        console.error("Error sending message:", error);
         toast({
           title: "Error Occurred!",
-          description: "Failed to send the Message",
+          description: "Failed to send the Message. Please try again.",
           status: "error",
           duration: 5000,
           isClosable: true,
@@ -180,15 +187,24 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
   };
 
   useEffect(() => {
-    socket = io(ENDPOINT, {
-      withCredentials: true,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
+    // Initialize socket only once if it doesn't exist
+    if (!socket) {
+      socket = io(ENDPOINT, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        timeout: 10000,
+      });
+      
+      console.log("Socket connection initialized with endpoint:", ENDPOINT);
+    }
     
-    socket.emit("setup", user);
+    // Setup event only when user is available
+    if (user) {
+      console.log("Setting up socket with user:", user.name);
+      socket.emit("setup", user);
+    }
     
     socket.on("connected", () => {
       console.log("Socket connected successfully");
@@ -197,6 +213,8 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
     
     socket.on("connect_error", (error) => {
       console.log("Socket connection error:", error);
+      // Try to reconnect with a different transport
+      socket.io.opts.transports = ['polling', 'websocket'];
       toast({
         title: "Connection Error",
         description: "Trying to reconnect to chat service...",
@@ -207,56 +225,82 @@ const SingleChat = ({ fetchAgain, setFetchAgain }) => {
       });
     });
     
-    socket.on("typing", () => setIsTyping(true));
-    socket.on("stop typing", () => setIsTyping(false));
-
-    // Clean up function
+    // Clean up function is still here but won't disconnect socket
+    // to maintain connection across component remounts
     return () => {
-      socket.off("connected");
-      socket.off("connect_error");
-      socket.off("typing");
-      socket.off("stop typing");
-      socket.disconnect();
+      if (socket) {
+        socket.off("connected");
+        socket.off("connect_error");
+      }
     };
-    // eslint-disable-next-line
-  }, []);
+  }, [user, toast]);
+
+  // Separate listeners for typing events
+  useEffect(() => {
+    if (socket) {
+      socket.on("typing", () => setIsTyping(true));
+      socket.on("stop typing", () => setIsTyping(false));
+      
+      return () => {
+        socket.off("typing");
+        socket.off("stop typing");
+      };
+    }
+  }, [socket]);
 
   useEffect(() => {
-    fetchMessages();
-
-    selectedChatCompare = selectedChat;
+    if (selectedChat && socket) {
+      fetchMessages();
+      socket.emit("join chat", selectedChat._id);
+      selectedChatCompare = selectedChat;
+    }
     // eslint-disable-next-line
   }, [selectedChat]);
 
-  // Separate effect to handle message reception via socket
+  // Message reception handler - reattach whenever key dependencies change
   useEffect(() => {
-    const messageHandler = (newMessageRecieved) => {
-      console.log("New message received via socket:", newMessageRecieved);
-
+    if (!socket) return;
+    
+    console.log("Setting up message received listener");
+    
+    function handleNewMessage(newMessageReceived) {
+      console.log("New message received:", newMessageReceived);
+      
+      // Always update the UI right away
       if (
-        !selectedChatCompare || // if chat is not selected or doesn't match current chat
-        selectedChatCompare._id !== newMessageRecieved.chat._id
+        selectedChatCompare && 
+        selectedChatCompare._id === newMessageReceived.chat._id
       ) {
-        // Add notification
-        if (!notification.includes(newMessageRecieved)) {
-          setNotification([newMessageRecieved, ...notification]);
-          setFetchAgain(!fetchAgain);
-        }
+        // Force update even if the same message comes in
+        setMessages(prevMessages => {
+          // Check if message is already in the list (avoid duplicates)
+          const messageExists = prevMessages.some(
+            m => m._id === newMessageReceived._id
+          );
+          
+          if (messageExists) {
+            return prevMessages;
+          } else {
+            return [...prevMessages, newMessageReceived];
+          }
+        });
       } else {
-        // Add message to current chat
-        console.log("Adding message to current chat");
-        setMessages((prevMessages) => [...prevMessages, newMessageRecieved]);
+        // Handle notifications
+        console.log("Message is for another chat - adding notification");
+        setNotification(prev => [newMessageReceived, ...prev]);
+        setFetchAgain(!fetchAgain);
       }
-    };
-
-    // Set up the event listener
-    socket.on("message recieved", messageHandler);
-
-    // Clean up function to prevent memory leaks
+    }
+    
+    // Remove previous listeners to avoid duplicates
+    socket.off("message recieved");
+    // Attach new listener
+    socket.on("message recieved", handleNewMessage);
+    
     return () => {
-      socket.off("message recieved", messageHandler);
+      socket.off("message recieved");
     };
-  }, [notification, fetchAgain, selectedChat, setFetchAgain, setNotification]);
+  }, [selectedChat, fetchAgain, setFetchAgain, setNotification]);
 
   const typingHandler = (e) => {
     setNewMessage(e.target.value);

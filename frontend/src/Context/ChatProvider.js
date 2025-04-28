@@ -11,10 +11,35 @@ const ChatProvider = ({ children }) => {
     const userInfo = JSON.parse(localStorage.getItem("userInfo"));
     return userInfo;
   });
-  const [notification, setNotification] = useState([]);
+  // Initialize notifications from localStorage if available
+  const [notification, setNotification] = useState(() => {
+    try {
+      const savedNotifications = localStorage.getItem("chatNotifications");
+      return savedNotifications ? JSON.parse(savedNotifications) : [];
+    } catch (error) {
+      console.error("Error loading notifications from localStorage:", error);
+      return [];
+    }
+  });
   const [chats, setChats] = useState();
 
   const navigate = useNavigate();
+
+  // Persist notifications to localStorage when they change
+  useEffect(() => {
+    if (notification.length > 0) {
+      localStorage.setItem("chatNotifications", JSON.stringify(notification));
+    }
+  }, [notification]);
+
+  // Clear notifications when selecting the chat they belong to
+  useEffect(() => {
+    if (selectedChat) {
+      setNotification(prev => 
+        prev.filter(notif => notif.chat._id !== selectedChat._id)
+      );
+    }
+  }, [selectedChat]);
 
   // Set up axios interceptor for handling auth errors
   useEffect(() => {
